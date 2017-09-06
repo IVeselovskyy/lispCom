@@ -1,6 +1,7 @@
 #include <editline/readline.h>
 #include <editline/history.h>
 #include "mpc.h"
+#include "eval.h"
 
 int main(int argc, char** argv) {
   
@@ -14,7 +15,7 @@ int main(int argc, char** argv) {
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                                     \
       number   : /-?[0-9]+/ ;                             \
-      operator : '+' | '-' | '*' | '/' ;                  \
+      operator : '+' | '-' | '*' | '/' | '^' | '%' ;      \
       expr     : <number> | '(' <operator> <expr>+ ')' ;  \
       lispy    : /^/ <operator> <expr>+ /$/ ;             \
     ",
@@ -32,7 +33,8 @@ int main(int argc, char** argv) {
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Lispy, &r)) {
       /* On success print and delete the AST */
-      mpc_ast_print(r.output);
+      long result = eval(r.output);
+      printf("%li\n", result);
       mpc_ast_delete(r.output);
     } else {
       /* Otherwise print and delete the Error */
