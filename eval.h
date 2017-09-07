@@ -1,17 +1,32 @@
 #include "mpc.h"
 
-/* Create Enumeration of Possible Error Types */
-enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
 
 /* Create Enumeration of Possible lval Types */
-enum { LVAL_NUM, LVAL_ERR };
+enum { LVAL_NUM, LVAL_DOUBLE, LVAL_ERR, LVAL_SYM, LVAL_SEXPR };
 
-typedef struct {
-	  int type;
-	  long num;
-	      int err;
+
+typedef struct lval {
+    char type;
+    double num;
+    char *err;
+    char *sym;
+    int count;
+    struct lval **cell;
 } lval;
 
-long eval_op(long x, char* op, long y);
-long eval(mpc_ast_t* t);
+lval eval_op(lval, char *, lval);
+lval eval(mpc_ast_t *);
 
+lval *lval_num(double);
+lval *lval_double(double);
+lval *lval_err(char *);
+lval *lval_sym(char *);
+lval *lval_sexpr(void);
+int zero_check(lval);
+void lval_del(lval *);
+lval *lval_add(lval *, lval *);
+lval *lval_read_num(mpc_ast_t *);
+lval *lval_read(mpc_ast_t *);
+void lval_expr_print(lval *, char, char);
+void lval_print(lval *);
+void lval_println(lval *);
