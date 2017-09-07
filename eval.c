@@ -2,8 +2,8 @@
 #include <math.h>
 #include "eval.h"
 
-int zero_check(lval y) {
-    if(y.num == 0.0) {
+int zero_check(lval *y) {
+    if(y->num == 0.0) {
         return 1;
     }
     return 0;
@@ -89,12 +89,12 @@ lval* lval_read_num(mpc_ast_t* t) {
 
     if(strchr(t->contents, '.')) {
         x = strtod(t->contents, NULL);
-        printf("%fl double\n", x);
+        printf("%lf double\n", x);
         return errno != ERANGE ? lval_double(x) : lval_err("Number is too large");
 
     } else {
         x = strtol(t->contents, NULL, 10);
-        printf("%fl not double\n", x);
+        printf("%lf not double\n", x);
         return errno != ERANGE ? lval_num(x) : lval_err("Number is too large");
     }
 }
@@ -138,8 +138,8 @@ void lval_expr_print(lval* v, char open, char close) {
 
 void lval_print(lval* v) {
     switch (v->type) {
-        case LVAL_NUM:      printf("%dl", (int)v->num); break;
-        case LVAL_DOUBLE:   printf("%fl", v->num); break;
+        case LVAL_NUM:      printf("%ld", (long)v->num); break;
+        case LVAL_DOUBLE:   printf("%lf", v->num); break;
         case LVAL_ERR:      printf("Error: %s", v->err); break;
         case LVAL_SYM:      printf("%s", v->sym); break;
         case LVAL_SEXPR:    lval_expr_print(v, '(', ')'); break;
@@ -148,99 +148,180 @@ void lval_print(lval* v) {
 
 void lval_println(lval* v) { lval_print(v); putchar('\n'); }
 
-
-/* Use operator string to see which operation to perform */
-lval eval_op(lval x, char* op, lval y) {
-    //printf("%g. %g \n", x.num, y.num);
-
-    if (strcmp(op, "+") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return lval_double( x.num + y.num);
-        }
-        return lval_num( x.num + y.num);
-    }
-
-    if (strcmp(op, "-") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return lval_double( x.num - y.num);
-        }
-        return lval_num(x.num - y.num); }
-
-    if (strcmp(op, "*") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return lval_double( x.num * y.num);
-        }
-        return lval_num(x.num * y.num); }
-
-    if (strcmp(op, "/") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return zero_check(y) == 1 ? lval_err(LERR_DIV_ZERO) : lval_double(x.num / y.num);
-        }
-        return zero_check(y) == 1 ? lval_err(LERR_DIV_ZERO) : lval_num(x.num / y.num);
-    }
-
-    if (strcmp(op, "^") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return lval_double( x.num + y.num);
-        }
-        return lval_num(pow(x.num, y.num)); }
-
-    if (strcmp(op, "%") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return lval_err(LERR_BAD_NUM);
-        }
-        return zero_check(y) == 1 ? lval_err(LERR_DIV_ZERO) : lval_num((int)x.num % (int)y.num);
-    }
-    if (strcmp(op, "//") == 0) {
-        if ((y.type == LVAL_DOUBLE) || (x.type == LVAL_DOUBLE)) {
-            return lval_err(LERR_BAD_NUM);
-        }
-        return zero_check(y) == 1 ? lval_err(LERR_DIV_ZERO) : lval_num((int)x.num / (int)y.num);
-    }
-    return lval_err(LERR_BAD_OP);
+lval* lval_eval(lval* v) {
+    /* Evaluate Sexpressions */
+    if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(v); }
+    /* All other lval types remain the same */
+    return v;
 }
 
-lval eval(mpc_ast_t* t) {
-    /* If tagged as number return it directly. */
-    if (strstr(t->tag, "number")) {
-        errno = 0;
-        double x;
-        // TODO: check what happens if the int is too large
+lval* lval_eval_sexpr(lval* v) {
 
-
-        if(strchr(t->contents, '.')) {
-            x = strtod(t->contents, NULL);
-            printf("%fl double\n", x);
-            return errno != ERANGE ? lval_double(x) : lval_err(LERR_BAD_NUM);
-
-        } else {
-            x = strtol(t->contents, NULL, 10);
-            printf("%fl not double\n", x);
-            return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
-        }
+    /* Evaluate Children */
+    for (int i = 0; i < v->count; i++) {
+        v->cell[i] = lval_eval(v->cell[i]);
     }
 
-    /* The operator is always second child. */
-    char* op = t->children[1]->contents;
-
-    /* We store the third child in `x` */
-    lval x = eval(t->children[2]);
-
-    if ((t->children_num == 4) && (strcmp(op, "-") == 0)) {
-        return lval_num(-x.num);
-    }
-    /* Iterate the remaining children and combining. */
-    int i = 3;
-    while (strstr(t->children[i]->tag, "expr")) {
-
-        // Added functionality to detect nested errors
-        lval second_op = eval(t->children[i]);
-        if(second_op.type == LVAL_ERR) {
-            return second_op;
-        }
-        x = eval_op(x, op, second_op);
-        i++;
+    /* Error Checking */
+    for (int i = 0; i < v->count; i++) {
+        if (v->cell[i]->type == LVAL_ERR) { return lval_take(v, i); }
     }
 
+    /* Empty Expression */
+    if (v->count == 0) { return v; }
+
+    /* Single Expression */
+    if (v->count == 1) { return lval_take(v, 0); }
+
+    /* Ensure First Element is Symbol */
+    lval* f = lval_pop(v, 0);
+    if (f->type != LVAL_SYM) {
+        lval_del(f); lval_del(v);
+        return lval_err("S-expression Does not start with symbol!");
+    }
+
+    /* Call builtin with operator */
+    lval* result = builtin_op(v, f->sym);
+    lval_del(f);
+    return result;
+}
+
+lval* lval_pop(lval* v, int i) {
+    /* Find the item at "i" */
+    lval* x = v->cell[i];
+
+    /* Shift memory after the item at "i" over the top */
+    memmove(&v->cell[i], &v->cell[i+1],
+            sizeof(lval*) * (v->count-i-1));
+
+    /* Decrease the count of items in the list */
+    v->count--;
+
+    /* Reallocate the memory used */
+    v->cell = realloc(v->cell, sizeof(lval*) * v->count);
     return x;
 }
+
+lval* lval_take(lval* v, int i) {
+    lval* x = lval_pop(v, i);
+    lval_del(v);
+    return x;
+}
+
+
+
+/* Use operator string to see which operation to perform */
+lval* builtin_op(lval* a, char* op) {
+
+    /* Ensure all arguments are numbers */
+    for (int i = 0; i < a->count; i++) {
+        if ((a->cell[i]->type != LVAL_NUM) && (a->cell[i]->type != LVAL_DOUBLE)) {
+            lval_del(a);
+            return lval_err("Cannot operate on non-number!");
+        }
+    }
+
+    /* Pop the first element */
+    lval* x = lval_pop(a, 0);
+
+    /* If no arguments and sub then perform unary negation */
+    if ((strcmp(op, "-") == 0) && a->count == 0) {
+        x->num = -x->num;
+    }
+
+    // TODO: Make it so that x type changes if it's NUM, but y is double
+    /* While there are still elements remaining */
+    while (a->count > 0) {
+        lval *y = lval_pop(a, 0);
+        
+        if (strcmp(op, "+") == 0) { x->num += y->num; }
+
+        if (strcmp(op, "-") == 0) { x->num -= y->num; }
+
+        if (strcmp(op, "*") == 0) { x->num *= y->num; }
+
+        if (strcmp(op, "^") == 0) { x->num = pow(x->num, y->num); }
+
+        if (strcmp(op, "%") == 0) {
+            if ((y->type == LVAL_DOUBLE) || (x->type == LVAL_DOUBLE)) {
+                x = lval_err("Can't use double");
+            }
+            if (zero_check(y) == 1) {
+                lval_del(x);
+                lval_del(y);
+                x = lval_err("Dividing by zero");
+            }
+            x->num = (int) x->num % (int) y->num;
+        }
+
+        if (strcmp(op, "/") == 0) {
+            if (zero_check(y) == 1) {
+                lval_del(x);
+                lval_del(y);
+                x = lval_err("Dividing by zero");
+            }
+            x->num = x->num / y->num;
+        }
+
+        if (strcmp(op, "//") == 0) {
+            if ((y->type == LVAL_DOUBLE) || (x->type == LVAL_DOUBLE)) {
+                x = lval_err("Can't use double");
+            }
+            if (zero_check(y) == 1) {
+                lval_del(x);
+                lval_del(y);
+                x = lval_err("Dividing by zero");
+            }
+            x->num = (int) x->num / (int) y->num;
+        }
+        lval_del(y);
+    }
+    lval_del(a);
+    return x;
+
+}
+
+//lval eval(mpc_ast_t* t) {
+//    /* If tagged as number return it directly-> */
+//    if (strstr(t->tag, "number")) {
+//        errno = 0;
+//        double x;
+//        // TODO: check what happens if the int is too large
+//
+//
+//        if(strchr(t->contents, '.')) {
+//            x = strtod(t->contents, NULL);
+//            printf("%fl double\n", x);
+//            return errno != ERANGE ? lval_double(x) : lval_err("Number is too large");
+//
+//        } else {
+//            x = strtol(t->contents, NULL, 10);
+//            printf("%fl not double\n", x);
+//            return errno != ERANGE ? lval_num(x) : lval_err("Number is too large");
+//        }
+//    }
+//
+//    /* The operator is always second child. */
+//    char* op = t->children[1]->contents;
+//
+//    /* We store the third child in `x` */
+//    lval x = eval(t->children[2]);
+//
+//    if ((t->children_num == 4) && (strcmp(op, "-") == 0)) {
+//        return lval_num(-x->num);
+//    }
+//    /* Iterate the remaining children and combining. */
+//    int i = 3;
+//    while (strstr(t->children[i]->tag, "expr")) {
+//
+//        // Added functionality to detect nested errors
+//        lval second_op = eval(t->children[i]);
+//        if(second_op.type == LVAL_ERR) {
+//            return second_op;
+//        }
+//        x = eval_op(x, op, second_op);
+//        i++;
+//    }
+//
+//    return x;
+//}
