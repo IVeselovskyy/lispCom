@@ -1,4 +1,4 @@
-# A simple common LISP compiler
+# A  LISP interpreter
 Based on http://www.buildyourownlisp.com/
 
-mpc by Daniel Holden
+Parcer used: mpc by Daniel Holden with no modifications
